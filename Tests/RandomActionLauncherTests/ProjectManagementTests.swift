@@ -90,7 +90,8 @@ struct ProjectManagementTests {
     private func makeModel(store: any ProjectManaging) -> ProjectManagerModel {
         ProjectManagerModel(
             store: store,
-            importService: ProjectImportService(store: store)
+            importService: ProjectImportService(store: store),
+            relocationService: ProjectRelocationService(store: store)
         )
     }
 

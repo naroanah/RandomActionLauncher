@@ -267,7 +267,8 @@ struct ProjectImportTests {
         let repository = try makeRepository()
         let model = ProjectManagerModel(
             store: repository,
-            importService: ProjectImportService(store: repository)
+            importService: ProjectImportService(store: repository),
+            relocationService: ProjectRelocationService(store: repository)
         )
 
         #expect(model.projects.isEmpty)

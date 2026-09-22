@@ -35,16 +35,28 @@ protocol ProjectEmptyStateClassifying: AnyObject {
 final class ProjectEmptyStateClassifier: ProjectEmptyStateClassifying {
     private let store: any ProjectStoring
     private let clock: any ProjectClock
-    private let resourceChecker: any ProjectResourceChecking
+    private let resourceResolver: any ProjectResourceResolving
 
     init(
         store: any ProjectStoring,
         clock: any ProjectClock,
-        resourceChecker: any ProjectResourceChecking
+        resourceResolver: any ProjectResourceResolving
     ) {
         self.store = store
         self.clock = clock
-        self.resourceChecker = resourceChecker
+        self.resourceResolver = resourceResolver
+    }
+
+    convenience init(
+        store: any ProjectStoring,
+        clock: any ProjectClock,
+        resourceChecker: any ProjectResourceChecking
+    ) {
+        self.init(
+            store: store,
+            clock: clock,
+            resourceResolver: CheckedProjectResourceResolver(checker: resourceChecker)
+        )
     }
 
     func classify() throws -> ProjectEmptyReason {
@@ -65,8 +77,11 @@ final class ProjectEmptyStateClassifier: ProjectEmptyStateClassifying {
             }
             return now < cooldownUntil
         }
-        let unavailableProjects = activeProjects.filter {
-            !resourceChecker.isResourceAvailable(for: $0)
+        var unavailableProjects: [Project] = []
+        for project in activeProjects {
+            if case .unavailable = try resourceResolver.resolve(project) {
+                unavailableProjects.append(project)
+            }
         }
 
         let allCooling = coolingProjects.count == activeProjects.count

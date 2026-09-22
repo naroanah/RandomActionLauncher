@@ -104,6 +104,14 @@ struct ProjectManagerView: View {
                 .foregroundStyle(.red)
                 .accessibilityLabel("添加\(name)失败，\(reason)")
                 .fixedSize(horizontal: false, vertical: true)
+        case .relocated(let name):
+            Label("已重新定位「\(name)」。", systemImage: "checkmark.circle.fill")
+                .foregroundStyle(.green)
+                .accessibilityLabel("已重新定位项目\(name)")
+        case .relocationDuplicate(let name):
+            Label("该资源已绑定「\(name)」，未修改当前项目；已在列表中定位。", systemImage: "exclamationmark.circle.fill")
+                .foregroundStyle(.orange)
+                .accessibilityLabel("资源已绑定\(name)，已在列表中定位")
         case .updated(let name):
             Label("已更新「\(name)」。", systemImage: "checkmark.circle.fill")
                 .foregroundStyle(.green)
@@ -288,6 +296,12 @@ private struct ProjectRow: View {
 
             Spacer(minLength: 8)
 
+            if project.availability == .unavailable {
+                Button("重新定位…") {
+                    presentRelocationPanel()
+                }
+            }
+
             Button("删除", role: .destructive) {
                 isDeleteConfirmationPresented = true
             }
@@ -302,6 +316,19 @@ private struct ProjectRow: View {
         case .video: "视频"
         case .document: "文档"
         }
+    }
+
+    private func presentRelocationPanel() {
+        let panel = NSOpenPanel()
+        panel.title = "重新定位项目"
+        panel.message = "选择这个项目现在对应的一个文件或文件夹"
+        panel.prompt = "重新定位"
+        panel.canChooseFiles = true
+        panel.canChooseDirectories = true
+        panel.allowsMultipleSelection = false
+        panel.resolvesAliases = true
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        _ = model.relocateProject(id: project.id, to: url)
     }
 
     private func beginEditing() {

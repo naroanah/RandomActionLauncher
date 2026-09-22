@@ -41,30 +41,33 @@ struct RandomActionLauncherApp: App {
     private static func makeReadyStorageState() throws -> StorageState {
         let container = try PersistenceContainerFactory.makeApplicationContainer()
         let repository = ProjectRepository(container: container)
+        let clock = SystemProjectClock()
+        let bookmarks = SecurityBookmarkService()
+        let resourceResolver = ProjectResourceResolver(
+            store: repository,
+            bookmarks: bookmarks
+        )
         let projectManager = ProjectManagerModel(
             store: repository,
-            importService: ProjectImportService(store: repository)
+            importService: ProjectImportService(store: repository),
+            relocationService: ProjectRelocationService(store: repository, bookmarks: bookmarks)
         )
-
-        let bookmarks = SecurityBookmarkService()
-        let clock = SystemProjectClock()
-        let resourceChecker = LiveProjectResourceChecker(bookmarks: bookmarks)
         let drawService = ProjectDrawService(
             store: repository,
             clock: clock,
-            resourceChecker: resourceChecker
+            resourceResolver: resourceResolver
         )
         let emptyStateClassifier = ProjectEmptyStateClassifier(
             store: repository,
             clock: clock,
-            resourceChecker: resourceChecker
+            resourceResolver: resourceResolver
         )
         let menuBar = MenuBarCoordinatorModel(
             drawService: drawService,
             store: repository,
-            resourceChecker: resourceChecker,
+            resourceResolver: resourceResolver,
             emptyStateClassifier: emptyStateClassifier,
-            projectOpener: NSWorkspaceProjectOpener(bookmarks: bookmarks)
+            projectOpener: NSWorkspaceProjectOpener()
         )
 
         return .ready(projectManager: projectManager, menuBar: menuBar)

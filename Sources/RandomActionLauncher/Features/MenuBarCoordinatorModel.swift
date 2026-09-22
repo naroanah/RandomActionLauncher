@@ -32,7 +32,7 @@ extension ProjectDrawService: ProjectDrawing {}
 final class MenuBarCoordinatorModel {
     private let drawService: any ProjectDrawing
     private let store: any ProjectManaging
-    private let resourceChecker: any ProjectResourceChecking
+    private let resourceResolver: any ProjectResourceResolving
     private let emptyStateClassifier: any ProjectEmptyStateClassifying
     private let projectOpener: any ProjectOpening
 
@@ -42,15 +42,31 @@ final class MenuBarCoordinatorModel {
     init(
         drawService: any ProjectDrawing,
         store: any ProjectManaging,
-        resourceChecker: any ProjectResourceChecking,
+        resourceResolver: any ProjectResourceResolving,
         emptyStateClassifier: any ProjectEmptyStateClassifying,
         projectOpener: any ProjectOpening
     ) {
         self.drawService = drawService
         self.store = store
-        self.resourceChecker = resourceChecker
+        self.resourceResolver = resourceResolver
         self.emptyStateClassifier = emptyStateClassifier
         self.projectOpener = projectOpener
+    }
+
+    convenience init(
+        drawService: any ProjectDrawing,
+        store: any ProjectManaging,
+        resourceChecker: any ProjectResourceChecking,
+        emptyStateClassifier: any ProjectEmptyStateClassifying,
+        projectOpener: any ProjectOpening
+    ) {
+        self.init(
+            drawService: drawService,
+            store: store,
+            resourceResolver: CheckedProjectResourceResolver(checker: resourceChecker),
+            emptyStateClassifier: emptyStateClassifier,
+            projectOpener: projectOpener
+        )
     }
 
     var isOperationInProgress: Bool {
@@ -83,11 +99,11 @@ final class MenuBarCoordinatorModel {
                 invalidateResult(message: statusInvalidationMessage(for: latestProject.status))
                 return
             }
-            guard resourceChecker.isResourceAvailable(for: latestProject) else {
+            guard case .available(let resource) = try resourceResolver.resolve(latestProject) else {
                 invalidateResult(message: "当前结果资源不可用，请重新抽取。")
                 return
             }
-            state = .result(latestProject)
+            state = .result(resource.project)
         } catch {
             state = .error(
                 message: "无法刷新当前结果：\(errorMessage(for: error))",
@@ -128,18 +144,26 @@ final class MenuBarCoordinatorModel {
             invalidateResult(message: statusInvalidationMessage(for: latestProject.status))
             return
         }
-        guard resourceChecker.isResourceAvailable(for: latestProject) else {
-            invalidateResult(message: "当前结果资源不可用，请重新抽取。")
-            return
-        }
-
+        var openedProject = latestProject
         do {
-            try projectOpener.open(latestProject)
-            state = .result(latestProject)
+            let resolution = try resourceResolver.resolve(latestProject) { resource in
+                openedProject = resource.project
+                try projectOpener.open(resource.url)
+            }
+            guard case .available(let resource) = resolution else {
+                invalidateResult(message: "当前结果资源不可用，请重新抽取。")
+                return
+            }
+            state = .result(resource.project)
+        } catch let error as ProjectResourceResolutionError {
+            state = .error(
+                message: "无法确认当前结果：\(errorMessage(for: error))",
+                result: displayedProject
+            )
         } catch {
             state = .error(
                 message: "打开失败：\(errorMessage(for: error))",
-                result: latestProject
+                result: openedProject
             )
         }
     }

@@ -52,6 +52,7 @@ final class ProjectImportService {
     private let store: any ProjectStoring
     private let inspector: any ResourceInspecting
     private let bookmarks: any BookmarkHandling
+    private let resourceMatcher: ProjectResourceMatcher
 
     init(
         store: any ProjectStoring,
@@ -61,6 +62,11 @@ final class ProjectImportService {
         self.store = store
         self.inspector = inspector ?? LiveResourceInspector()
         self.bookmarks = bookmarks ?? SecurityBookmarkService()
+        self.resourceMatcher = ProjectResourceMatcher(
+            store: store,
+            inspector: self.inspector,
+            bookmarks: self.bookmarks
+        )
     }
 
     func importResource(at url: URL) throws -> ImportOutcome {
@@ -77,7 +83,7 @@ final class ProjectImportService {
         }
 
         do {
-            if let existing = try findExistingProject(matching: resource.identity) {
+            if let existing = try resourceMatcher.findExistingProject(matching: resource.identity) {
                 return .duplicate(existing)
             }
         } catch {
@@ -105,31 +111,5 @@ final class ProjectImportService {
         } catch {
             throw ImportError.persistenceFailed(reason: error.localizedDescription)
         }
-    }
-
-    private func findExistingProject(matching identity: ResourceIdentity) throws -> Project? {
-        for project in try store.fetchAll() {
-            if let bookmark = bookmarks.resolveBookmark(project.bookmarkData) {
-                let resolvedIdentity = inspector.identity(url: bookmark.url)
-                if resolvedIdentity == identity {
-                    return project
-                }
-            }
-            if storedFallbackIdentity(for: project) == identity {
-                return project
-            }
-        }
-        return nil
-    }
-
-    private func storedFallbackIdentity(for project: Project) -> ResourceIdentity {
-        let canonicalURL = URL(fileURLWithPath: project.originalPath)
-            .standardizedFileURL
-            .resolvingSymlinksInPath()
-        return ResourceIdentity(
-            fileIdentifier: nil,
-            volumeIdentifier: nil,
-            canonicalPath: canonicalURL.path
-        )
     }
 }

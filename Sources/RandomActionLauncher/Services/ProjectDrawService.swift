@@ -22,7 +22,7 @@ final class SystemProjectTicketSource: ProjectTicketSource {
     }
 }
 
-/// 只做抽取前的实时可访问性检查，不更新路径或持久化 availability；这些行为属于 S6。
+/// 简单可访问性替身协议。生产抽取使用 ProjectResourceResolving 完成解析和修复。
 @MainActor
 protocol ProjectResourceChecking: AnyObject {
     func isResourceAvailable(for project: Project) -> Bool
@@ -66,6 +66,7 @@ final class LiveProjectResourceChecker: ProjectResourceChecking {
 
 enum ProjectDrawError: LocalizedError, Equatable {
     case loadFailed(reason: String)
+    case resourceUpdateFailed(reason: String)
     case saveFailed(reason: String)
     case invalidTicket(value: Int, totalWeight: Int)
 
@@ -73,6 +74,8 @@ enum ProjectDrawError: LocalizedError, Equatable {
         switch self {
         case .loadFailed(let reason):
             return "读取抽取项目失败：\(reason)"
+        case .resourceUpdateFailed(let reason):
+            return "更新项目资源状态失败：\(reason)"
         case .saveFailed(let reason):
             return "保存抽取结果失败：\(reason)"
         case .invalidTicket(let value, let totalWeight):
@@ -87,8 +90,8 @@ enum ProjectDrawResult: Equatable {
     case operationInProgress
 }
 
-/// S4 抽取领域服务：读取最新项目、过滤候选、按权重选择并提交冷却时间。
-/// 该服务不展示 UI、不更新资源路径、不保存会话记录。
+/// 抽取领域服务：读取最新项目、解析候选资源、按权重选择并提交冷却时间。
+/// 该服务不展示 UI，也不保存会话记录。
 @MainActor
 final class ProjectDrawService {
     static let cooldownDuration: TimeInterval = 86_400
@@ -96,19 +99,33 @@ final class ProjectDrawService {
     private let store: any ProjectManaging
     private let clock: any ProjectClock
     private let ticketSource: any ProjectTicketSource
-    private let resourceChecker: any ProjectResourceChecking
+    private let resourceResolver: any ProjectResourceResolving
     private var isOperationInProgress = false
 
     init(
         store: any ProjectManaging,
         clock: any ProjectClock = SystemProjectClock(),
         ticketSource: any ProjectTicketSource = SystemProjectTicketSource(),
-        resourceChecker: any ProjectResourceChecking = LiveProjectResourceChecker()
+        resourceResolver: any ProjectResourceResolving
     ) {
         self.store = store
         self.clock = clock
         self.ticketSource = ticketSource
-        self.resourceChecker = resourceChecker
+        self.resourceResolver = resourceResolver
+    }
+
+    convenience init(
+        store: any ProjectManaging,
+        clock: any ProjectClock = SystemProjectClock(),
+        ticketSource: any ProjectTicketSource = SystemProjectTicketSource(),
+        resourceChecker: any ProjectResourceChecking = LiveProjectResourceChecker()
+    ) {
+        self.init(
+            store: store,
+            clock: clock,
+            ticketSource: ticketSource,
+            resourceResolver: CheckedProjectResourceResolver(checker: resourceChecker)
+        )
     }
 
     func draw() throws -> ProjectDrawResult {
@@ -129,17 +146,24 @@ final class ProjectDrawService {
             throw ProjectDrawError.loadFailed(reason: error.localizedDescription)
         }
 
-        let candidates = projects
-            .filter { project in
-                guard project.status == .active else { return false }
-                guard project.cooldownUntil.map({ now >= $0 }) ?? true else {
-                    return false
+        var candidates: [Project] = []
+        for project in projects {
+            guard project.status == .active else { continue }
+            guard project.cooldownUntil.map({ now >= $0 }) ?? true else {
+                continue
+            }
+
+            do {
+                if case .available(let resource) = try resourceResolver.resolve(project) {
+                    candidates.append(resource.project)
                 }
-                return resourceChecker.isResourceAvailable(for: project)
+            } catch {
+                throw ProjectDrawError.resourceUpdateFailed(reason: error.localizedDescription)
             }
-            .sorted { lhs, rhs in
-                lhs.id.uuidString < rhs.id.uuidString
-            }
+        }
+        candidates.sort { lhs, rhs in
+            lhs.id.uuidString < rhs.id.uuidString
+        }
 
         guard !candidates.isEmpty else {
             return .noEligibleProjects

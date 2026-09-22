@@ -8,6 +8,8 @@ final class ProjectManagerModel {
         case created(name: String)
         case duplicate(name: String)
         case failed(name: String, reason: String)
+        case relocated(name: String)
+        case relocationDuplicate(name: String)
         case updated(name: String)
         case statusChanged(name: String, status: ProjectStatus)
         case deleted(name: String)
@@ -22,11 +24,17 @@ final class ProjectManagerModel {
     private let store: any ProjectManaging
     private let importService: ProjectImportService
     private let managementService: ProjectManagementService
+    private let relocationService: ProjectRelocationService
 
-    init(store: any ProjectManaging, importService: ProjectImportService) {
+    init(
+        store: any ProjectManaging,
+        importService: ProjectImportService,
+        relocationService: ProjectRelocationService
+    ) {
         self.store = store
         self.importService = importService
         self.managementService = ProjectManagementService(store: store)
+        self.relocationService = relocationService
         reload()
     }
 
@@ -55,6 +63,25 @@ final class ProjectManagerModel {
             importSingle(url)
         }
         reload()
+    }
+
+    @discardableResult
+    func relocateProject(id: UUID, to url: URL) -> Bool {
+        let name = projectName(for: id)
+        do {
+            switch try relocationService.relocate(id: id, to: url) {
+            case .updated(let updated):
+                replaceProject(updated)
+                feedback = .relocated(name: updated.displayName)
+                return true
+            case .duplicate(let existing):
+                highlightedProjectID = existing.id
+                feedback = .relocationDuplicate(name: existing.displayName)
+                return false
+            }
+        } catch {
+            return reportOperationFailure(action: "重新定位", name: name, error: error)
+        }
     }
 
     @discardableResult

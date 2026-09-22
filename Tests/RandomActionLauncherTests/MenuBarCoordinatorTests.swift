@@ -125,13 +125,13 @@ private final class CoordinatorEmptyStateStub: ProjectEmptyStateClassifying {
 @MainActor
 private final class CoordinatorOpener: ProjectOpening {
     var error: Error?
-    private(set) var openedProjects: [Project] = []
+    private(set) var openedURLs: [URL] = []
 
-    func open(_ project: Project) throws {
+    func open(_ url: URL) throws {
         if let error {
             throw error
         }
-        openedProjects.append(project)
+        openedURLs.append(url)
     }
 }
 
@@ -372,7 +372,7 @@ struct MenuBarCoordinatorTests {
 
         #expect(model.state == .result(project))
         #expect(store.values == [project])
-        #expect(opener.openedProjects.map(\.id) == [project.id])
+        #expect(opener.openedURLs.count == 1)
     }
 
     @Test func openFailurePreservesResultForRetry() throws {
@@ -424,7 +424,7 @@ struct MenuBarCoordinatorTests {
                 continue
             }
             #expect(result == nil)
-            #expect(opener.openedProjects.isEmpty)
+            #expect(opener.openedURLs.isEmpty)
         }
     }
 
