@@ -20,14 +20,8 @@ mkdir -p \
 export CLANG_MODULE_CACHE_PATH="${swiftpm_root}/module-cache"
 export SWIFTPM_MODULECACHE_OVERRIDE="${swiftpm_root}/module-cache"
 
-# 部分仅安装 Command Line Tools 的机器可能存在编译器与默认 SDK
-# 小版本不一致。完整 Xcode 可用时保留系统默认选择；否则使用已安装的
-# 兼容 SDK 完成本地构建。
-if ! xcodebuild -version >/dev/null 2>&1 \
-    && [[ -z "${SDKROOT:-}" ]] \
-    && [[ -d /Library/Developer/CommandLineTools/SDKs/MacOSX15.4.sdk ]]; then
-    export SDKROOT=/Library/Developer/CommandLineTools/SDKs/MacOSX15.4.sdk
-fi
+# 保留 swift 默认 SDK 选择。实测固定旧版 SDK（如 MacOSX15.4）会与
+# 新编译器的 Observation 宏展开不兼容；如需覆盖请通过环境变量显式传入。
 
 swift_build_arguments=(
     --disable-sandbox

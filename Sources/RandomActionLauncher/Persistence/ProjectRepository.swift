@@ -15,11 +15,16 @@ enum ProjectRepositoryError: LocalizedError, Equatable {
     }
 }
 
+@MainActor
 final class ProjectRepository {
     private let context: NSManagedObjectContext
 
-    init(container: NSPersistentContainer) {
-        context = container.viewContext
+    convenience init(container: NSPersistentContainer) {
+        self.init(context: container.viewContext)
+    }
+
+    init(context: NSManagedObjectContext) {
+        self.context = context
         context.automaticallyMergesChangesFromParent = true
     }
 

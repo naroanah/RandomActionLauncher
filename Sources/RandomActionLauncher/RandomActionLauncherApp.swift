@@ -7,9 +7,13 @@ struct RandomActionLauncherApp: App {
 
     init() {
         do {
-            _storageState = State(
-                initialValue: .ready(try PersistenceContainerFactory.makeApplicationContainer())
+            let container = try PersistenceContainerFactory.makeApplicationContainer()
+            let repository = ProjectRepository(container: container)
+            let model = ProjectManagerModel(
+                store: repository,
+                importService: ProjectImportService(store: repository)
             )
+            _storageState = State(initialValue: .ready(model))
         } catch {
             _storageState = State(initialValue: .failed(error.localizedDescription))
         }
@@ -34,7 +38,14 @@ struct RandomActionLauncherApp: App {
 
     private func retryStorageInitialization() {
         do {
-            storageState = .ready(try PersistenceContainerFactory.makeApplicationContainer())
+            let container = try PersistenceContainerFactory.makeApplicationContainer()
+            let repository = ProjectRepository(container: container)
+            storageState = .ready(
+                ProjectManagerModel(
+                    store: repository,
+                    importService: ProjectImportService(store: repository)
+                )
+            )
         } catch {
             storageState = .failed(error.localizedDescription)
         }
@@ -42,7 +53,7 @@ struct RandomActionLauncherApp: App {
 }
 
 private enum StorageState {
-    case ready(NSPersistentContainer)
+    case ready(ProjectManagerModel)
     case failed(String)
 }
 
@@ -53,8 +64,7 @@ private struct StorageWindowContent: View {
     var body: some View {
         switch state {
         case .ready(let container):
-            ProjectManagerView()
-                .environment(\.managedObjectContext, container.viewContext)
+            ProjectManagerView(model: container)
         case .failed(let message):
             StorageFailureView(message: message, retry: retry)
         }
@@ -67,9 +77,8 @@ private struct StorageMenuBarContent: View {
 
     var body: some View {
         switch state {
-        case .ready(let container):
+        case .ready:
             MenuBarPanelView()
-                .environment(\.managedObjectContext, container.viewContext)
         case .failed(let message):
             StorageFailureView(message: message, retry: retry)
                 .frame(width: 360, height: 240)

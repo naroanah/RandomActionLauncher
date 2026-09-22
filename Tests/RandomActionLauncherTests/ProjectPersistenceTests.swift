@@ -2,6 +2,7 @@ import Foundation
 import Testing
 @testable import RandomActionLauncher
 
+@MainActor
 struct ProjectPersistenceTests {
     private func makeProject(
         name: String = "学习项目",
