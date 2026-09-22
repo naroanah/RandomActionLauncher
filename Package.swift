@@ -16,6 +16,10 @@ let package = Package(
     targets: [
         .executableTarget(
             name: "RandomActionLauncher"
+        ),
+        .testTarget(
+            name: "RandomActionLauncherTests",
+            dependencies: ["RandomActionLauncher"]
         )
     ]
 )
