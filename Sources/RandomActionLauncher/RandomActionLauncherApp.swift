@@ -7,13 +7,7 @@ struct RandomActionLauncherApp: App {
 
     init() {
         do {
-            let container = try PersistenceContainerFactory.makeApplicationContainer()
-            let repository = ProjectRepository(container: container)
-            let model = ProjectManagerModel(
-                store: repository,
-                importService: ProjectImportService(store: repository)
-            )
-            _storageState = State(initialValue: .ready(model))
+            _storageState = State(initialValue: try Self.makeReadyStorageState())
         } catch {
             _storageState = State(initialValue: .failed(error.localizedDescription))
         }
@@ -38,22 +32,47 @@ struct RandomActionLauncherApp: App {
 
     private func retryStorageInitialization() {
         do {
-            let container = try PersistenceContainerFactory.makeApplicationContainer()
-            let repository = ProjectRepository(container: container)
-            storageState = .ready(
-                ProjectManagerModel(
-                    store: repository,
-                    importService: ProjectImportService(store: repository)
-                )
-            )
+            storageState = try Self.makeReadyStorageState()
         } catch {
             storageState = .failed(error.localizedDescription)
         }
     }
+
+    private static func makeReadyStorageState() throws -> StorageState {
+        let container = try PersistenceContainerFactory.makeApplicationContainer()
+        let repository = ProjectRepository(container: container)
+        let projectManager = ProjectManagerModel(
+            store: repository,
+            importService: ProjectImportService(store: repository)
+        )
+
+        let bookmarks = SecurityBookmarkService()
+        let clock = SystemProjectClock()
+        let resourceChecker = LiveProjectResourceChecker(bookmarks: bookmarks)
+        let drawService = ProjectDrawService(
+            store: repository,
+            clock: clock,
+            resourceChecker: resourceChecker
+        )
+        let emptyStateClassifier = ProjectEmptyStateClassifier(
+            store: repository,
+            clock: clock,
+            resourceChecker: resourceChecker
+        )
+        let menuBar = MenuBarCoordinatorModel(
+            drawService: drawService,
+            store: repository,
+            resourceChecker: resourceChecker,
+            emptyStateClassifier: emptyStateClassifier,
+            projectOpener: NSWorkspaceProjectOpener(bookmarks: bookmarks)
+        )
+
+        return .ready(projectManager: projectManager, menuBar: menuBar)
+    }
 }
 
 private enum StorageState {
-    case ready(ProjectManagerModel)
+    case ready(projectManager: ProjectManagerModel, menuBar: MenuBarCoordinatorModel)
     case failed(String)
 }
 
@@ -63,8 +82,8 @@ private struct StorageWindowContent: View {
 
     var body: some View {
         switch state {
-        case .ready(let container):
-            ProjectManagerView(model: container)
+        case .ready(let projectManager, _):
+            ProjectManagerView(model: projectManager)
         case .failed(let message):
             StorageFailureView(message: message, retry: retry)
         }
@@ -77,8 +96,8 @@ private struct StorageMenuBarContent: View {
 
     var body: some View {
         switch state {
-        case .ready:
-            MenuBarPanelView()
+        case .ready(_, let menuBar):
+            MenuBarPanelView(model: menuBar)
         case .failed(let message):
             StorageFailureView(message: message, retry: retry)
                 .frame(width: 360, height: 240)
