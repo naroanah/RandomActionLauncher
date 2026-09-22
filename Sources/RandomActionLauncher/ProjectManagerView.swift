@@ -221,6 +221,9 @@ private struct ProjectRow: View {
                 Text("权重：\(project.weight.localizedName)")
                 Text("状态：\(project.status.localizedName)")
                 Text("可用性：\(project.availability.localizedName)")
+                TimelineView(.periodic(from: .now, by: 60)) { context in
+                    Text("冷却：\(project.cooldownStatusText(now: context.date))")
+                }
             }
             .font(.caption)
             .foregroundStyle(.secondary)

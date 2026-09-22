@@ -124,4 +124,23 @@ struct Project: Identifiable, Equatable, Sendable, Codable {
         }
         displayName = normalizedName
     }
+
+    func cooldownStatusText(now: Date = .now) -> String {
+        guard let cooldownUntil else {
+            return "无冷却"
+        }
+        if now >= cooldownUntil {
+            return "已结束"
+        }
+        let remaining = cooldownUntil.timeIntervalSince(now)
+        let hours = Int(remaining) / 3600
+        let minutes = (Int(remaining) % 3600) / 60
+        if hours > 0 {
+            return "剩余 \(hours) 小时 \(minutes) 分钟"
+        }
+        if minutes > 0 {
+            return "剩余 \(minutes) 分钟"
+        }
+        return "即将结束"
+    }
 }

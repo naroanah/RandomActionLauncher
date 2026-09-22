@@ -32,6 +32,38 @@ struct ProjectPersistenceTests {
         #expect(project.availability == .available)
     }
 
+    @Test func cooldownStatusTextReflectsCurrentTime() throws {
+        let now = Date(timeIntervalSince1970: 1_700_000_000)
+        let noCooldown = try makeProject(name: "未抽取", date: now)
+
+        #expect(noCooldown.cooldownStatusText(now: now) == "无冷却")
+
+        // 即将结束（不到 1 分钟）
+        var soon = noCooldown
+        soon.cooldownUntil = now.addingTimeInterval(30)
+        #expect(soon.cooldownStatusText(now: now) == "即将结束")
+
+        // 分钟级
+        var minutes = noCooldown
+        minutes.cooldownUntil = now.addingTimeInterval(5 * 60)
+        #expect(minutes.cooldownStatusText(now: now) == "剩余 5 分钟")
+
+        // 小时 + 分钟
+        var hours = noCooldown
+        hours.cooldownUntil = now.addingTimeInterval(2 * 3600 + 30 * 60)
+        #expect(hours.cooldownStatusText(now: now) == "剩余 2 小时 30 分钟")
+
+        // 已结束（等于边界）
+        var expired = noCooldown
+        expired.cooldownUntil = now
+        #expect(expired.cooldownStatusText(now: now) == "已结束")
+
+        // 已过期
+        var past = noCooldown
+        past.cooldownUntil = now.addingTimeInterval(-1)
+        #expect(past.cooldownStatusText(now: now) == "已结束")
+    }
+
     @Test func emptyDisplayNameThrows() {
         #expect(throws: ProjectValidationError.emptyDisplayName) {
             try Project(
