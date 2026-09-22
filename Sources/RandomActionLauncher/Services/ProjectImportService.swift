@@ -7,7 +7,15 @@ protocol ProjectStoring: AnyObject {
     func create(_ project: Project) throws -> Project
 }
 
-extension ProjectRepository: ProjectStoring {}
+@MainActor
+protocol ProjectManaging: ProjectStoring {
+    func fetch(id: UUID) throws -> Project?
+    @discardableResult
+    func update(id: UUID, changes: (inout Project) throws -> Void) throws -> Project
+    func delete(id: UUID) throws
+}
+
+extension ProjectRepository: ProjectManaging {}
 
 enum ImportError: LocalizedError, Equatable {
     case resourceUnavailable(path: String)

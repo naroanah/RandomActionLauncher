@@ -11,29 +11,54 @@ enum ProjectValidationError: LocalizedError, Equatable, Sendable {
     }
 }
 
-enum ProjectResourceType: String, Codable, CaseIterable, Sendable {
+enum ProjectResourceType: String, Codable, CaseIterable, Sendable, Hashable {
     case folder
     case video
     case document
 }
 
-enum ProjectStatus: String, Codable, CaseIterable, Sendable {
+enum ProjectStatus: String, Codable, CaseIterable, Sendable, Hashable {
     case active
     case paused
     case completed
+
+    static let managementOrder: [ProjectStatus] = [.active, .paused, .completed]
+
+    var localizedName: String {
+        switch self {
+        case .active: "进行中"
+        case .paused: "暂停"
+        case .completed: "已完成"
+        }
+    }
 }
 
-enum ProjectWeight: Int, Codable, CaseIterable, Sendable {
+enum ProjectWeight: Int, Codable, CaseIterable, Sendable, Hashable {
     case low = 1
     case medium = 2
     case high = 3
 
     var numericValue: Int { rawValue }
+
+    var localizedName: String {
+        switch self {
+        case .low: "低"
+        case .medium: "中"
+        case .high: "高"
+        }
+    }
 }
 
-enum ProjectAvailability: String, Codable, CaseIterable, Sendable {
+enum ProjectAvailability: String, Codable, CaseIterable, Sendable, Hashable {
     case available
     case unavailable
+
+    var localizedName: String {
+        switch self {
+        case .available: "可用"
+        case .unavailable: "不可用"
+        }
+    }
 }
 
 struct Project: Identifiable, Equatable, Sendable, Codable {

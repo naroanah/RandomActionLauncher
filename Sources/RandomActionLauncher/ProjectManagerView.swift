@@ -55,15 +55,28 @@ struct ProjectManagerView: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else {
             ScrollViewReader { proxy in
-                List(model.projects) { project in
-                    ProjectRow(project: project)
-                        .id(project.id)
-                        .listRowBackground(
-                            model.highlightedProjectID == project.id
-                                ? Color.accentColor.opacity(0.18)
-                                : Color.clear
-                        )
+                List {
+                    ForEach(ProjectStatus.managementOrder, id: \.rawValue) { status in
+                        let statusProjects = model.projects(in: status)
+                        if !statusProjects.isEmpty {
+                            Section {
+                                ForEach(statusProjects) { project in
+                                    ProjectRow(project: project, model: model)
+                                        .id(project.id)
+                                        .listRowBackground(
+                                            model.highlightedProjectID == project.id
+                                                ? Color.accentColor.opacity(0.18)
+                                                : Color.clear
+                                        )
+                                }
+                            } header: {
+                                Text(status.localizedName)
+                                    .font(.headline)
+                            }
+                        }
+                    }
                 }
+                .listStyle(.inset)
                 .accessibilityLabel("项目列表")
                 .onChange(of: model.highlightedProjectID) { _, projectID in
                     guard let projectID else { return }
@@ -91,6 +104,23 @@ struct ProjectManagerView: View {
                 .foregroundStyle(.red)
                 .accessibilityLabel("添加\(name)失败，\(reason)")
                 .fixedSize(horizontal: false, vertical: true)
+        case .updated(let name):
+            Label("已更新「\(name)」。", systemImage: "checkmark.circle.fill")
+                .foregroundStyle(.green)
+                .accessibilityLabel("已更新项目\(name)")
+        case .statusChanged(let name, let status):
+            Label("「\(name)」已切换为“\(status.localizedName)”。", systemImage: "checkmark.circle.fill")
+                .foregroundStyle(.green)
+                .accessibilityLabel("项目\(name)已切换为\(status.localizedName)")
+        case .deleted(let name):
+            Label("已移除「\(name)」的应用记录；本地文件未删除。", systemImage: "checkmark.circle.fill")
+                .foregroundStyle(.green)
+                .accessibilityLabel("已删除项目记录\(name)，本地文件未删除")
+        case .operationFailed(let action, let name, let reason):
+            Label("\(action)「\(name)」失败：\(reason)", systemImage: "xmark.circle.fill")
+                .foregroundStyle(.red)
+                .accessibilityLabel("\(action)\(name)失败，\(reason)")
+                .fixedSize(horizontal: false, vertical: true)
         case .reloadFailed(let reason):
             Label("读取项目列表失败：\(reason)", systemImage: "exclamationmark.triangle.fill")
                 .foregroundStyle(.red)
@@ -115,33 +145,187 @@ struct ProjectManagerView: View {
 
 private struct ProjectRow: View {
     let project: Project
+    let model: ProjectManagerModel
+
+    @State private var isEditing = false
+    @State private var draftName: String
+    @State private var draftNote: String
+    @State private var draftWeight: ProjectWeight
+    @State private var isDeleteConfirmationPresented = false
+
+    init(project: Project, model: ProjectManagerModel) {
+        self.project = project
+        self.model = model
+        _draftName = State(initialValue: project.displayName)
+        _draftNote = State(initialValue: project.note)
+        _draftWeight = State(initialValue: project.weight)
+    }
 
     var body: some View {
-        HStack(alignment: .firstTextBaseline, spacing: 12) {
-            VStack(alignment: .leading, spacing: 3) {
-                Text(project.displayName)
-                    .font(.body.weight(.semibold))
-                Text(project.originalPath)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-                    .truncationMode(.middle)
-                    .textSelection(.enabled)
+        VStack(alignment: .leading, spacing: 10) {
+            if isEditing {
+                editor
+            } else {
+                details
             }
-            Spacer(minLength: 12)
-            Text(typeLabel)
+
+            Divider()
+            actions
+        }
+        .padding(.vertical, 6)
+        .onChange(of: project.updatedAt) { _, _ in
+            draftName = project.displayName
+            draftNote = project.note
+            draftWeight = project.weight
+        }
+        .confirmationDialog(
+            "删除“\(project.displayName)”？",
+            isPresented: $isDeleteConfirmationPresented,
+            titleVisibility: .visible
+        ) {
+            Button("删除", role: .destructive) {
+                _ = model.deleteProject(id: project.id)
+            }
+            Button("取消", role: .cancel) {}
+        } message: {
+            Text("只会移除应用中的记录，不会删除本地文件")
+        }
+    }
+
+    private var details: some View {
+        VStack(alignment: .leading, spacing: 5) {
+            Text(project.displayName)
+                .font(.body.weight(.semibold))
+                .accessibilityAddTraits(.isHeader)
+
+            Text(project.originalPath)
                 .font(.caption)
                 .foregroundStyle(.secondary)
+                .textSelection(.enabled)
+                .fixedSize(horizontal: false, vertical: true)
+
+            Text("备注：\(project.note.isEmpty ? "无" : project.note)")
+                .font(.callout)
+                .fixedSize(horizontal: false, vertical: true)
+
+            HStack(spacing: 14) {
+                Text("类型：\(resourceTypeName)")
+                Text("权重：\(project.weight.localizedName)")
+                Text("状态：\(project.status.localizedName)")
+                Text("可用性：\(project.availability.localizedName)")
+            }
+            .font(.caption)
+            .foregroundStyle(.secondary)
+            .fixedSize(horizontal: false, vertical: true)
         }
-        .padding(.vertical, 4)
         .accessibilityElement(children: .combine)
     }
 
-    private var typeLabel: String {
+    private var editor: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            TextField("项目名称", text: $draftName)
+                .textFieldStyle(.roundedBorder)
+                .accessibilityLabel("项目名称")
+
+            TextEditor(text: $draftNote)
+                .frame(minHeight: 56, maxHeight: 96)
+                .overlay {
+                    RoundedRectangle(cornerRadius: 5)
+                        .stroke(Color.secondary.opacity(0.25))
+                }
+                .accessibilityLabel("项目备注")
+
+            Picker("权重", selection: $draftWeight) {
+                ForEach(ProjectWeight.allCases, id: \.rawValue) { weight in
+                    Text(weight.localizedName).tag(weight)
+                }
+            }
+            .pickerStyle(.segmented)
+            .accessibilityLabel("项目权重")
+
+            HStack(spacing: 8) {
+                Button("保存") {
+                    saveEdits()
+                }
+                .keyboardShortcut(.defaultAction)
+
+                Button("取消") {
+                    cancelEditing()
+                }
+                .keyboardShortcut(.cancelAction)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var actions: some View {
+        HStack(spacing: 8) {
+            Button("编辑") {
+                beginEditing()
+            }
+            .disabled(isEditing)
+
+            switch project.status {
+            case .active:
+                Button("暂停") {
+                    _ = model.changeStatus(id: project.id, to: .paused)
+                }
+                Button("完成") {
+                    _ = model.changeStatus(id: project.id, to: .completed)
+                }
+            case .paused:
+                Button("恢复") {
+                    _ = model.changeStatus(id: project.id, to: .active)
+                }
+                Button("完成") {
+                    _ = model.changeStatus(id: project.id, to: .completed)
+                }
+            case .completed:
+                Button("重新激活") {
+                    _ = model.changeStatus(id: project.id, to: .active)
+                }
+            }
+
+            Spacer(minLength: 8)
+
+            Button("删除", role: .destructive) {
+                isDeleteConfirmationPresented = true
+            }
+            .accessibilityHint("只会移除应用中的记录，不会删除本地文件")
+        }
+        .buttonStyle(.borderless)
+    }
+
+    private var resourceTypeName: String {
         switch project.resourceType {
         case .folder: "文件夹"
         case .video: "视频"
         case .document: "文档"
         }
+    }
+
+    private func beginEditing() {
+        draftName = project.displayName
+        draftNote = project.note
+        draftWeight = project.weight
+        isEditing = true
+    }
+
+    private func saveEdits() {
+        if model.updateProject(
+            id: project.id,
+            displayName: draftName,
+            note: draftNote,
+            weight: draftWeight
+        ) {
+            isEditing = false
+        }
+    }
+
+    private func cancelEditing() {
+        draftName = project.displayName
+        draftNote = project.note
+        draftWeight = project.weight
+        isEditing = false
     }
 }
