@@ -77,7 +77,32 @@ enum PersistenceContainerFactory {
             attribute("availability", type: .stringAttributeType, optional: false)
         ]
         entity.uniquenessConstraints = [["id"]]
-        model.entities = [entity]
+
+        let sessionEntity = NSEntityDescription()
+        sessionEntity.name = DrawSessionRecord.entityName
+        sessionEntity.managedObjectClassName = NSStringFromClass(DrawSessionRecord.self)
+        sessionEntity.properties = [
+            attribute("id", type: .UUIDAttributeType, optional: false),
+            attribute("startedAt", type: .dateAttributeType, optional: false),
+            attribute("rerollCount", type: .integer32AttributeType, optional: false),
+            attribute("didClickOpen", type: .booleanAttributeType, optional: false),
+            attribute("openedProjectId", type: .UUIDAttributeType, optional: true),
+            attribute("openedAt", type: .dateAttributeType, optional: true),
+            attribute("timeToOpenMs", type: .integer64AttributeType, optional: true),
+            attribute("endedAt", type: .dateAttributeType, optional: true),
+        ]
+        sessionEntity.uniquenessConstraints = [["id"]]
+
+        let associationEntity = NSEntityDescription()
+        associationEntity.name = SessionProjectRecord.entityName
+        associationEntity.managedObjectClassName = NSStringFromClass(SessionProjectRecord.self)
+        associationEntity.properties = [
+            attribute("sessionID", type: .UUIDAttributeType, optional: false),
+            attribute("projectID", type: .UUIDAttributeType, optional: false),
+        ]
+        associationEntity.uniquenessConstraints = [["sessionID", "projectID"]]
+
+        model.entities = [entity, sessionEntity, associationEntity]
         return model
     }
 

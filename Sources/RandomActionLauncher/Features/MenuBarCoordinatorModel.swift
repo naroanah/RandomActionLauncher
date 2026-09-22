@@ -35,6 +35,7 @@ final class MenuBarCoordinatorModel {
     private let resourceResolver: any ProjectResourceResolving
     private let emptyStateClassifier: any ProjectEmptyStateClassifying
     private let projectOpener: any ProjectOpening
+    private let sessionService: DrawSessionService?
 
     private(set) var state: MenuBarPanelState = .idle
     private var isBusy = false
@@ -44,13 +45,15 @@ final class MenuBarCoordinatorModel {
         store: any ProjectManaging,
         resourceResolver: any ProjectResourceResolving,
         emptyStateClassifier: any ProjectEmptyStateClassifying,
-        projectOpener: any ProjectOpening
+        projectOpener: any ProjectOpening,
+        sessionService: DrawSessionService? = nil
     ) {
         self.drawService = drawService
         self.store = store
         self.resourceResolver = resourceResolver
         self.emptyStateClassifier = emptyStateClassifier
         self.projectOpener = projectOpener
+        self.sessionService = sessionService
     }
 
     convenience init(
@@ -78,11 +81,11 @@ final class MenuBarCoordinatorModel {
     }
 
     func draw() {
-        performDraw()
+        performDraw(isReroll: false)
     }
 
     func reroll() {
-        performDraw()
+        performDraw(isReroll: true)
     }
 
     func refresh() {
@@ -121,6 +124,8 @@ final class MenuBarCoordinatorModel {
             return
         }
 
+        try? sessionService?.recordOpenClick(projectID: displayedProject.id)
+
         isBusy = true
         state = .operationInProgress
         defer { isBusy = false }
@@ -154,6 +159,7 @@ final class MenuBarCoordinatorModel {
                 invalidateResult(message: "当前结果资源不可用，请重新抽取。")
                 return
             }
+            try? sessionService?.recordSuccessfulOpen(projectID: resource.project.id)
             state = .result(resource.project)
         } catch let error as ProjectResourceResolutionError {
             state = .error(
@@ -169,6 +175,7 @@ final class MenuBarCoordinatorModel {
     }
 
     func reset() {
+        try? sessionService?.end()
         isBusy = false
         state = .idle
     }
@@ -180,7 +187,7 @@ final class MenuBarCoordinatorModel {
         return note
     }
 
-    private func performDraw() {
+    private func performDraw(isReroll: Bool) {
         guard !isBusy else {
             state = .operationInProgress
             return
@@ -192,8 +199,14 @@ final class MenuBarCoordinatorModel {
         defer { isBusy = false }
 
         do {
+            if isReroll {
+                try sessionService?.recordReroll()
+            } else {
+                try sessionService?.startIfNeeded()
+            }
             switch try drawService.draw() {
             case .selected(let project):
+                try sessionService?.recordDisplayed(projectID: project.id)
                 state = .result(project)
             case .noEligibleProjects:
                 state = .empty(try emptyStateClassifier.classify())

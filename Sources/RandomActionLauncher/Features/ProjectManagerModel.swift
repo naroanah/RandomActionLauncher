@@ -25,16 +25,19 @@ final class ProjectManagerModel {
     private let importService: ProjectImportService
     private let managementService: ProjectManagementService
     private let relocationService: ProjectRelocationService
+    private let sessionRepository: DrawSessionRepository?
 
     init(
         store: any ProjectManaging,
         importService: ProjectImportService,
-        relocationService: ProjectRelocationService
+        relocationService: ProjectRelocationService,
+        sessionRepository: DrawSessionRepository? = nil
     ) {
         self.store = store
         self.importService = importService
         self.managementService = ProjectManagementService(store: store)
         self.relocationService = relocationService
+        self.sessionRepository = sessionRepository
         reload()
     }
 
@@ -124,6 +127,7 @@ final class ProjectManagerModel {
     func deleteProject(id: UUID) -> Bool {
         let name = projectName(for: id)
         do {
+            try sessionRepository?.deleteSessions(associatedWith: id)
             try managementService.delete(id: id)
             projects.removeAll { $0.id == id }
             if highlightedProjectID == id {

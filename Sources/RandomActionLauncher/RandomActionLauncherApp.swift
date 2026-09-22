@@ -47,10 +47,16 @@ struct RandomActionLauncherApp: App {
             store: repository,
             bookmarks: bookmarks
         )
+        let sessionRepository = DrawSessionRepository(container: container)
+        let sessionService = DrawSessionService(
+            store: sessionRepository,
+            clock: clock
+        )
         let projectManager = ProjectManagerModel(
             store: repository,
             importService: ProjectImportService(store: repository),
-            relocationService: ProjectRelocationService(store: repository, bookmarks: bookmarks)
+            relocationService: ProjectRelocationService(store: repository, bookmarks: bookmarks),
+            sessionRepository: sessionRepository
         )
         let drawService = ProjectDrawService(
             store: repository,
@@ -67,7 +73,8 @@ struct RandomActionLauncherApp: App {
             store: repository,
             resourceResolver: resourceResolver,
             emptyStateClassifier: emptyStateClassifier,
-            projectOpener: NSWorkspaceProjectOpener()
+            projectOpener: NSWorkspaceProjectOpener(),
+            sessionService: sessionService
         )
 
         return .ready(projectManager: projectManager, menuBar: menuBar)
